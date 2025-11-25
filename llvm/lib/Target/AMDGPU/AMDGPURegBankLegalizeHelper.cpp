@@ -20,6 +20,7 @@
 #include "MCTargetDesc/AMDGPUMCTargetDesc.h"
 #include "llvm/CodeGen/GlobalISel/GenericMachineInstrs.h"
 #include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
+#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineUniformityAnalysis.h"
 #include "llvm/IR/IntrinsicsAMDGPU.h"
@@ -31,29 +32,47 @@ using namespace AMDGPU;
 
 RegBankLegalizeHelper::RegBankLegalizeHelper(
     MachineIRBuilder &B, const MachineUniformityInfo &MUI,
-    const RegisterBankInfo &RBI, const RegBankLegalizeRules &RBLRules)
-    : ST(B.getMF().getSubtarget<GCNSubtarget>()), B(B), MRI(*B.getMRI()),
-      MUI(MUI), RBI(RBI), RBLRules(RBLRules), IsWave32(ST.isWave32()),
+    const RegisterBankInfo &RBI, const TargetPassConfig &TPC,
+    const RegBankLegalizeRules &RBLRules)
+    : MF(B.getMF()), ST(MF.getSubtarget<GCNSubtarget>()), B(B),
+      MRI(*B.getMRI()), MUI(MUI), RBI(RBI), TPC(TPC), MORE(MF, nullptr),
+      RBLRules(RBLRules), IsWave32(ST.isWave32()),
       SgprRB(&RBI.getRegBank(AMDGPU::SGPRRegBankID)),
       VgprRB(&RBI.getRegBank(AMDGPU::VGPRRegBankID)),
       VccRB(&RBI.getRegBank(AMDGPU::VCCRegBankID)) {}
 
-void RegBankLegalizeHelper::findRuleAndApplyMapping(MachineInstr &MI) {
-  const SetOfRulesForOpcode &RuleSet = RBLRules.getRulesForOpc(MI);
-  const RegBankLLTMapping &Mapping = RuleSet.findMappingForMI(MI, MRI, MUI);
+bool RegBankLegalizeHelper::findRuleAndApplyMapping(MachineInstr &MI) {
+  const SetOfRulesForOpcode *RuleSet = RBLRules.getRulesForOpc(MI);
+  if (!RuleSet) {
+    reportGISelFailure(MF, TPC, MORE, "amdgpu-regbanklegalize",
+                       "No AMDGPU RegBankLegalize rules defined for opcode",
+                       MI);
+    return false;
+  }
+
+  const RegBankLLTMapping *Mapping = RuleSet->findMappingForMI(MI, MRI, MUI);
+  if (!Mapping) {
+    reportGISelFailure(MF, TPC, MORE, "amdgpu-regbanklegalize",
+                       "AMDGPU RegBankLegalize: none of the rules defined with "
+                       "'Any' for MI's opcode matched MI ",
+                       MI);
+    return false;
+  }
 
   SmallSet<Register, 4> WaterfallSgprs;
   unsigned OpIdx = 0;
-  if (Mapping.DstOpMapping.size() > 0) {
+  if (Mapping->DstOpMapping.size() > 0) {
     B.setInsertPt(*MI.getParent(), std::next(MI.getIterator()));
-    applyMappingDst(MI, OpIdx, Mapping.DstOpMapping);
+    if (!applyMappingDst(MI, OpIdx, Mapping->DstOpMapping))
+      return false;
   }
-  if (Mapping.SrcOpMapping.size() > 0) {
+  if (Mapping->SrcOpMapping.size() > 0) {
     B.setInstr(MI);
-    applyMappingSrc(MI, OpIdx, Mapping.SrcOpMapping, WaterfallSgprs);
+    applyMappingSrc(MI, OpIdx, Mapping->SrcOpMapping, WaterfallSgprs);
   }
 
-  lower(MI, Mapping, WaterfallSgprs);
+  lower(MI, *Mapping, WaterfallSgprs);
+  return true;
 }
 
 bool RegBankLegalizeHelper::executeInWaterfallLoop(
@@ -1055,7 +1074,7 @@ RegBankLegalizeHelper::getRegBankFromID(RegBankLLTMappingApplyID ID) {
   }
 }
 
-void RegBankLegalizeHelper::applyMappingDst(
+bool RegBankLegalizeHelper::applyMappingDst(
     MachineInstr &MI, unsigned &OpIdx,
     const SmallVectorImpl<RegBankLLTMappingApplyID> &MethodIDs) {
   // Defs start from operand 0
@@ -1180,13 +1199,18 @@ void RegBankLegalizeHelper::applyMappingDst(
       break;
     }
     case InvalidMapping: {
-      LLVM_DEBUG(dbgs() << "Instruction with Invalid mapping: "; MI.dump(););
-      llvm_unreachable("missing fast rule for MI");
+      reportGISelFailure(
+          MF, TPC, MORE, "amdgpu-regbanklegalize",
+          "AMDGPU RegBankLegalize: missing fast rule ('Div' or 'Uni') for ",
+          MI);
+      return false;
     }
     default:
       llvm_unreachable("ID not supported");
     }
   }
+
+  return true;
 }
 
 void RegBankLegalizeHelper::applyMappingSrc(
