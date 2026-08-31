@@ -34,6 +34,7 @@ def Directive970 : SubtargetFeature<"", "CPUDirective", "PPC::DIR_970", "">;
 def Directive32  : SubtargetFeature<"", "CPUDirective", "PPC::DIR_32", "">;
 def Directive64  : SubtargetFeature<"", "CPUDirective", "PPC::DIR_64", "">;
 def DirectiveA2  : SubtargetFeature<"", "CPUDirective", "PPC::DIR_A2", "">;
+def DirectivePPE42 : SubtargetFeature<"", "CPUDirective", "PPC::DIR_440", "">;
 def DirectiveE500   : SubtargetFeature<"", "CPUDirective",
                                        "PPC::DIR_E500", "">;
 def DirectiveE500mc : SubtargetFeature<"", "CPUDirective",
@@ -85,7 +86,9 @@ def FeatureAltivec   : SubtargetFeature<"altivec","HasAltivec", "true",
 def FeatureSPE       : SubtargetFeature<"spe","HasSPE", "true",
                                         "Enable SPE instructions",
                                         [FeatureHardFloat]>;
-def FeatureEFPU2 : SubtargetFeature<"efpu2", "HasEFPU2", "true", 
+def FeaturePPE42     : SubtargetFeature<"ppe42","IsPPE42", "true",
+                                        "Enable PPE42 instructions">;
+def FeatureEFPU2 : SubtargetFeature<"efpu2", "HasEFPU2", "true",
                                         "Enable Embedded Floating-Point APU 2 instructions",
                                         [FeatureSPE]>;
 def FeatureMFOCRF    : SubtargetFeature<"mfocrf","HasMFOCRF", "true",
@@ -586,6 +589,8 @@ def : ProcessorModel<"450", PPC440Model, [Directive440, FeatureISEL,
                                           FeatureFRES, FeatureFRSQRTE,
                                           FeatureICBT, FeatureBookE,
                                           FeatureMSYNC, FeatureMFTB]>;
+def : Processor<"ppe42", NoItineraries, [DirectivePPE42, FeatureMFTB,
+                                         FeaturePPE42]>;
 def : Processor<"601", G3Itineraries, [Directive601, FeatureFPU]>;
 def : Processor<"602", G3Itineraries, [Directive602, FeatureFPU,
                                        FeatureMFTB]>;

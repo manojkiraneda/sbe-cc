@@ -733,6 +733,7 @@ def IsPPC6xx  : Predicate<"Subtarget->isPPC6xx()">;
 def IsE500  : Predicate<"Subtarget->isE500()">;
 def HasSPE  : Predicate<"Subtarget->hasSPE()">;
 def HasICBT : Predicate<"Subtarget->hasICBT()">;
+def IsPPE42 : Predicate<"Subtarget->isPPE42()">;
 def HasPartwordAtomics : Predicate<"Subtarget->hasPartwordAtomics()">;
 def HasQuadwordAtomics : Predicate<"Subtarget->hasQuadwordAtomics()">;
 def NoNaNsFPMath
@@ -3472,6 +3473,7 @@ include "PPCInstrSPE.td"
 include "PPCInstr64Bit.td"
 include "PPCInstrVSX.td"
 include "PPCInstrHTM.td"
+include "PPCInstrPPEVD.td"
 
 def crnot : OutPatFrag<(ops node:$in),
                        (CRNOT $in)>;
@@ -4972,12 +4974,12 @@ multiclass BranchSimpleMnemonic2<string name, string pm, int bo>
   def : InstAlias<"b"#name#"ctr"#pm#" $bi", (gBCCTR bo, crbitrc:$bi, 0)>;
   def : InstAlias<"b"#name#"ctrl"#pm#" $bi", (gBCCTRL bo, crbitrc:$bi, 0)>;
 }
-defm : BranchSimpleMnemonic2<"t", "", 12>;
 defm : BranchSimpleMnemonic2<"f", "", 4>;
-defm : BranchSimpleMnemonic2<"t", "-", 14>;
+defm : BranchSimpleMnemonic2<"t", "", 12>;
 defm : BranchSimpleMnemonic2<"f", "-", 6>;
-defm : BranchSimpleMnemonic2<"t", "+", 15>;
+defm : BranchSimpleMnemonic2<"t", "-", 14>;
 defm : BranchSimpleMnemonic2<"f", "+", 7>;
+defm : BranchSimpleMnemonic2<"t", "+", 15>;
 defm : BranchSimpleMnemonic1<"dnzt", "", 8>;
 defm : BranchSimpleMnemonic1<"dnzf", "", 0>;
 defm : BranchSimpleMnemonic1<"dzt", "", 10>;

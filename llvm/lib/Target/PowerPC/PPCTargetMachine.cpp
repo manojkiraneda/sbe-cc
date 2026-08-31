@@ -202,8 +202,9 @@ static std::string getDataLayoutString(const Triple &T) {
 }
 
 static std::string computeFSAdditions(StringRef FS, CodeGenOptLevel OL,
-                                      const Triple &TT) {
+                                      const Triple &TT, StringRef CPU) {
   std::string FullFS = std::string(FS);
+  const bool IsPPE42 = CPU == "ppe42";
 
   // Make sure 64-bit features are available when CPUname is generic
   if (TT.getArch() == Triple::ppc64 || TT.getArch() == Triple::ppc64le) {
@@ -213,7 +214,9 @@ static std::string computeFSAdditions(StringRef FS, CodeGenOptLevel OL,
       FullFS = "+64bit";
   }
 
-  if (OL >= CodeGenOptLevel::Default) {
+  // CR-logical instructions are not implemented by PPE42. Do not make i1
+  // values legal in individual condition-register bits for this subtarget.
+  if (OL >= CodeGenOptLevel::Default && !IsPPE42) {
     if (!FullFS.empty())
       FullFS = "+crbits," + FullFS;
     else
@@ -233,6 +236,10 @@ static std::string computeFSAdditions(StringRef FS, CodeGenOptLevel OL,
     else
       FullFS = "+aix";
   }
+
+  // Keep this last so an explicit +crbits cannot override the hardware rule.
+  if (IsPPE42)
+    FullFS += FullFS.empty() ? "-crbits" : ",-crbits";
 
   return FullFS;
 }
@@ -349,7 +356,7 @@ PPCTargetMachine::PPCTargetMachine(const Target &T, const Triple &TT,
                                    std::optional<CodeModel::Model> CM,
                                    CodeGenOptLevel OL, bool JIT)
     : CodeGenTargetMachineImpl(T, getDataLayoutString(TT), TT, CPU,
-                               computeFSAdditions(FS, OL, TT), Options,
+                               computeFSAdditions(FS, OL, TT, CPU), Options,
                                getEffectiveRelocModel(TT, RM),
                                getEffectivePPCCodeModel(TT, CM, JIT), OL),
       TLOF(createTLOF(getTargetTriple())),
@@ -398,7 +405,7 @@ PPCTargetMachine::getSubtargetImpl(const Function &F) const {
         // shouldn't require adding them. Fixing this means pulling Feature64Bit
         // out of most of the target cpus in the .td file and making it set only
         // as part of initialization via the TargetTriple.
-        computeFSAdditions(FS, getOptLevel(), getTargetTriple()), *this);
+        computeFSAdditions(FS, getOptLevel(), getTargetTriple(), CPU), *this);
   }
   return I.get();
 }
